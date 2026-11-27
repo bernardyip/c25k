@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>C25K Treadmill Interval Timer</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #000000;
+      color: #f5f5f5;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ring-transition {
+      transition: stroke-dashoffset 0.25s linear, stroke 0.35s ease;
+    }
+    .sound-flash {
+      animation: flashScale 0.38s ease-out;
+    }
+    @keyframes flashScale {
+      0% { transform: scale(0.96); }
+      40% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #000000;
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(64, 64, 64, 0.75);
+      border-radius: 9999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(115, 115, 115, 0.85);
+    }
+    input[type="range"] {
+      accent-color: #f97316;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-black text-neutral-100 antialiased selection:bg-orange-500/30">
+
+  <!-- Hidden audio elements for Android screen-off Media Session & WAV cue playback -->
+  <audio id="keepAliveAudio" loop playsinline preload="auto"></audio>
+  <audio id="cueAudio" playsinline preload="auto"></audio>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-xs w-full px-2 sm:px-0"></div>
+
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+    <!-- Top Header -->
+    <header class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-neutral-900">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-rose-600 flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white leading-tight">C25K Treadmill Timer</h1>
+          <p class="text-xs text-neutral-400">9-Week Repeatable Interval Guide · 2-Tone Audio Cues</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span id="bgStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-black text-neutral-300 border border-neutral-800">
+          <span id="bgStatusDot" class="w-2 h-2 rounded-full bg-neutral-500"></span>
+          <span id="bgStatusText">Screen-Off Ready</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Week Selector Dropdown (saved in localStorage) -->
+    <section class="mb-5" aria-label="Select Week">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1">
+          <label for="weekSelect" class="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">Workout Week</label>
+          <div class="relative">
+            <select id="weekSelect" class="w-full appearance-none bg-black hover:bg-neutral-950 text-white font-semibold text-sm sm:text-base rounded-2xl border border-neutral-800 focus:border-orange-500 focus:outline-none px-4 py-3 pr-10 transition-colors cursor-pointer">
+              <!-- Populated by JS -->
+            </select>
+            <svg class="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Optional variant switcher shown only for Week 5 & Week 6 where C25K has 3 distinct progressions -->
+      <div id="variantBar" class="hidden mt-3 flex flex-wrap items-center justify-between gap-2 bg-black border border-neutral-800 rounded-2xl px-3.5 py-2.5">
+        <div class="text-xs text-neutral-300">
+          <span id="variantNoteTitle" class="font-semibold text-orange-400">Week 5</span>
+          <span class="text-neutral-400"> — C25K has 3 step-ups this week. Pick one:</span>
+        </div>
+        <div id="variantButtons" class="flex items-center gap-1.5">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Main 2-Column Workspace -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+      <!-- Left Column: Hero Timer, Controls & Workout Breakdown -->
+      <div class="lg:col-span-7 flex flex-col gap-5">
+
+        <!-- Hero Timer Card -->
+        <section id="timerCard" class="relative overflow-hidden rounded-3xl bg-black border border-neutral-800 p-5 sm:p-7">
+          <!-- Subtle OLED-friendly Ambient Glow -->
+          <div id="ambientGlow" class="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-15 bg-sky-500 transition-colors duration-500"></div>
+
+          <!-- Top Meta Row -->
+          <div class="relative flex items-center justify-between text-xs sm:text-sm text-neutral-400 mb-4">
+            <div>
+              <span id="activeWorkoutTitle" class="font-bold text-white">Week 1</span>
+              <span class="mx-1.5 text-neutral-600">·</span>
+              <span id="intervalCounter">Interval 1 of 18</span>
+            </div>
+            <div class="font-mono font-semibold text-neutral-300 tabular-nums">
+              <span id="totalElapsedDisplay">00:00</span>
+              <span class="text-neutral-600"> / </span>
+              <span id="totalDurationDisplay">30:00</span>
+            </div>
+          </div>
+
+          <!-- Circular Progress Ring -->
+          <div class="relative flex items-center justify-center my-2">
+            <svg class="w-64 h-64 sm:w-72 sm:h-72 -rotate-90" viewBox="0 0 260 260">
+              <circle cx="130" cy="130" r="114" fill="none" stroke="#1c1c1e" stroke-width="12" />
+              <circle id="progressRing" cx="130" cy="130" r="114" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round" stroke-dasharray="716.28" stroke-dashoffset="0" class="ring-transition" />
+            </svg>
+
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+              <span id="phaseBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest bg-sky-500/15 text-sky-300 border border-sky-400/30 mb-2">
+                WARMUP WALK
+              </span>
+              <div id="intervalTimerDisplay" class="text-6xl sm:text-7xl font-black tracking-tight text-white font-mono tabular-nums leading-none">
+                05:00
+              </div>
+              <div id="nextPhaseDisplay" class="mt-3 text-xs sm:text-sm text-neutral-400 font-medium">
+                Next: <span class="text-orange-400 font-semibold">RUN · 1:00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overall Workout Progress Bar -->
+          <div class="relative mt-5 mb-6">
+            <div class="flex justify-between text-[11px] font-medium text-neutral-400 mb-1.5">
+              <span>Overall Progress</span>
+              <span id="overallPercentDisplay" class="tabular-nums">0%</span>
+            </div>
+            <div class="w-full h-2.5 bg-neutral-900 rounded-full overflow-hidden">
+              <div id="overallProgressBar" class="h-full bg-gradient-to-r from-sky-400 to-orange-500 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Primary Controls -->
+          <div class="relative grid grid-cols-4 gap-2.5 sm:gap-3">
+            <button id="prevBtn" type="button" class="flex flex-col items-center justify-center min-h-[56px] rounded-2xl bg-neutral-950 hover:bg-neutral-900 active:scale-95 text-neutral-100 border border-neutral-800 transition-all" title="Previous Interval">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+              <span class="text-[10px] font-semibold mt-0.5 text-neutral-400">Prev</span>
+            </button>
+
+            <button id="startPauseBtn" type="button" class="col-span-2 flex items-center justify-center gap-2.5 min-h-[56px] rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 active:scale-[0.98] text-white font-bold text-base sm:text-lg shadow-lg shadow-orange-500/20 transition-all">
+              <svg id="startPauseIcon" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              <span id="startPauseLabel">Start Workout</span>
+            </button>
+
+            <button id="nextBtn" type="button" class="flex flex-col items-center justify-center min-h-[56px] rounded-2xl bg-neutral-950 hover:bg-neutral-900 active:scale-95 text-neutral-100 border border-neutral-800 transition-all" title="Next Interval">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+              <span class="text-[10px] font-semibold mt-0.5 text-neutral-400">Next</span>
+            </button>
+          </div>
+
+          <div class="relative mt-3 flex items-center justify-between gap-2">
+            <button id="resetBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset Timer
+            </button>
+            <span class="text-[11px] text-neutral-500">Pace tip: run slowly, walk briskly</span>
+          </div>
+        </section>
+
+        <!-- Workout Summary & Segmented Timeline -->
+        <section class="rounded-3xl bg-black border border-neutral-800 p-5">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 id="scheduleHeading" class="text-sm font-bold text-white">Week 1 Breakdown</h2>
+              <p id="scheduleSubtitle" class="text-xs text-neutral-400 mt-0.5">8× (1:00 Run / 1:30 Walk) · 30:00 total</p>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] font-medium">
+              <span class="inline-flex items-center gap-1 text-orange-300"><span class="w-2.5 h-2.5 rounded-sm bg-orange-500"></span>Run</span>
+              <span class="inline-flex items-center gap-1 text-sky-300"><span class="w-2.5 h-2.5 rounded-sm bg-sky-500"></span>Walk</span>
+            </div>
+          </div>
+
+          <!-- Proportional Segmented Timeline Bar -->
+          <div class="relative mt-2 mb-4">
+            <div id="timelineBar" class="w-full h-5 rounded-xl overflow-hidden flex gap-[2px] bg-neutral-950 border border-neutral-800/80 p-0.5">
+              <!-- Populated by JS -->
+            </div>
+            <div id="timelinePlayhead" class="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_8px_#fff] transition-all duration-200" style="left: 0%"></div>
+          </div>
+
+          <!-- Stats Summary Pills -->
+          <div class="grid grid-cols-3 gap-2 text-center mb-4">
+            <div class="rounded-2xl bg-neutral-950 border border-neutral-800 py-2 px-2">
+              <div class="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">Total Time</div>
+              <div id="statTotalTime" class="text-sm font-bold text-white font-mono mt-0.5">30:00</div>
+            </div>
+            <div class="rounded-2xl bg-orange-500/10 border border-orange-500/30 py-2 px-2">
+              <div class="text-[10px] uppercase tracking-wider text-orange-300 font-semibold">Total Run</div>
+              <div id="statRunTime" class="text-sm font-bold text-orange-200 font-mono mt-0.5">08:00</div>
+            </div>
+            <div class="rounded-2xl bg-sky-500/10 border border-sky-500/30 py-2 px-2">
+              <div class="text-[10px] uppercase tracking-wider text-sky-300 font-semibold">Total Walk</div>
+              <div id="statWalkTime" class="text-sm font-bold text-sky-200 font-mono mt-0.5">22:00</div>
+            </div>
+          </div>
+
+          <!-- Clickable Interval List -->
+          <div class="flex items-center justify-between text-[11px] text-neutral-400 mb-2 px-1">
+            <span>Tap any interval to jump there</span>
+            <span>Exact C25K Treadmill Schedule</span>
+          </div>
+          <div id="intervalList" class="space-y-1.5 max-h-[380px] overflow-y-auto custom-scroll pr-1">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: 2-Cue Audio & Screen-Off Settings -->
+      <div class="lg:col-span-5 flex flex-col gap-5">
+
+        <!-- 2-Tone Sound Test & Audio Settings Card -->
+        <section class="rounded-3xl bg-black border border-neutral-800 p-5">
+          <div class="flex items-center justify-between mb-3.5">
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+              2-Cue Audio &amp; Screen-Off Controls
+            </h2>
+            <span id="volumeLabel" class="text-xs font-mono font-semibold text-neutral-400 tabular-nums">90%</span>
+          </div>
+
+          <!-- Test Run / Test Walk Sound Buttons -->
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <button id="testRunBtn" type="button" class="flex items-center justify-center gap-2 min-h-[48px] px-3 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 active:scale-95 border border-orange-500/40 text-orange-300 font-semibold text-sm transition-all">
+              <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Test Run Sound</span>
+            </button>
+            <button id="testWalkBtn" type="button" class="flex items-center justify-center gap-2 min-h-[48px] px-3 py-2.5 rounded-2xl bg-sky-500/15 hover:bg-sky-500/25 active:scale-95 border border-sky-500/40 text-sky-300 font-semibold text-sm transition-all">
+              <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Test Walk Sound</span>
+            </button>
+          </div>
+
+          <!-- Volume Slider -->
+          <div class="mb-4">
+            <label for="volumeSlider" class="sr-only">Cue Volume</label>
+            <input id="volumeSlider" type="range" min="0" max="100" value="90" class="w-full h-2 bg-neutral-900 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[11px] text-neutral-500 mt-1">
+              <span>Run: Ascending 3-note chime</span>
+              <span>Walk: Descending 3-note chime</span>
+            </div>
+          </div>
+
+          <!-- Toggles Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
+            <label class="flex items-center justify-between gap-2 p-3 rounded-2xl bg-neutral-950 border border-neutral-800 cursor-pointer select-none">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-neutral-100">Screen-Off Audio</div>
+                <div class="text-[10px] text-neutral-400 leading-tight mt-0.5">Silent keep-alive session</div>
+              </div>
+              <input id="keepAliveToggle" type="checkbox" checked class="w-4 h-4 rounded accent-orange-500 shrink-0 cursor-pointer">
+            </label>
+
+            <label class="flex items-center justify-between gap-2 p-3 rounded-2xl bg-neutral-950 border border-neutral-800 cursor-pointer select-none">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-neutral-100">Vibrate</div>
+                <div class="text-[10px] text-neutral-400 leading-tight mt-0.5">Haptic cue on switch</div>
+              </div>
+              <input id="vibrateToggle" type="checkbox" checked class="w-4 h-4 rounded accent-orange-500 shrink-0 cursor-pointer">
+            </label>
+
+            <label class="flex items-center justify-between gap-2 p-3 rounded-2xl bg-neutral-950 border border-neutral-800 cursor-pointer select-none">
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-neutral-100">Keep Screen On</div>
+                <div class="text-[10px] text-neutral-400 leading-tight mt-0.5">Prevent auto-sleep</div>
+              </div>
+              <input id="wakeLockToggle" type="checkbox" class="w-4 h-4 rounded accent-orange-500 shrink-0 cursor-pointer">
+            </label>
+          </div>
+
+          <!-- Collapsible Android Screen-Off Guide -->
+          <details class="mt-3.5 rounded-2xl bg-black border border-neutral-800 px-3.5 py-2.5 text-xs text-neutral-400">
+            <summary class="cursor-pointer font-semibold text-neutral-300 select-none">How Screen-Off Audio Works on Android</summary>
+            <ul class="mt-2 space-y-1.5 list-disc list-inside leading-relaxed">
+              <li>With <strong class="text-neutral-200">Screen-Off Audio</strong> enabled, the app plays a silent media track so Android treats it like a music player and shows lock-screen Play/Pause controls.</li>
+              <li>Timing uses your phone's real wall clock, so intervals never drift even if the browser throttles background ticks.</li>
+              <li>For maximum reliability on Android, keep this tab active before locking the screen and set Chrome battery usage to <strong class="text-neutral-200">Unrestricted</strong> in Android App Info if your phone aggressively sleeps background tabs.</li>
+            </ul>
+          </details>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. GROUNDED C25K TREADMILL SCHEDULE DATA (from https://c25k.com/c25k_treadmill/)
+    // =========================================================================
+    function buildSegments(rawList) {
+      let cursor = 0;
+      return rawList.map(([type, label, durationSec], idx) => {
+        const seg = {
+          index: idx,
+          type,
+          label,
+          duration: durationSec,
+          start: cursor,
+          end: cursor + durationSec
+        };
+        cursor += durationSec;
+        return seg;
+      });
+    }
+
+    const C25K_WEEKS = [
+      {
+        week: 1,
+        shortLabel: '1m / 1.5m',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '8× (1:00 Run / 1:30 Walk) + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['run', 'Run', 60], ['walk', 'Walk', 90],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 2,
+        shortLabel: '1.5m / 2m',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '6× (1:30 Run / 2:00 Walk) + Warmup & 4:00 Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['run', 'Run', 90], ['walk', 'Walk', 120],
+              ['cooldown', 'Cooldown Walk', 240]
+            ])
+          }
+        ]
+      },
+      {
+        week: 3,
+        shortLabel: '1.5m & 3m',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '2× (1:30 Run / 1:30 Walk / 3:00 Run / 3:00 Walk)',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 90], ['walk', 'Walk', 90],
+              ['run', 'Run', 180], ['walk', 'Walk', 180],
+              ['run', 'Run', 90], ['walk', 'Walk', 90],
+              ['run', 'Run', 180], ['walk', 'Walk', 180],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 4,
+        shortLabel: '3m & 5m',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '3:00 Run · 1:30 Walk · 5:00 Run · 2:30 Walk · 3:00 Run · 1:30 Walk · 5:00 Run',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 180], ['walk', 'Walk', 90],
+              ['run', 'Run', 300], ['walk', 'Walk', 150],
+              ['run', 'Run', 180], ['walk', 'Walk', 90],
+              ['run', 'Run', 300],
+              ['cooldown', 'Cooldown Walk', 210]
+            ])
+          }
+        ]
+      },
+      {
+        week: 5,
+        shortLabel: '8m × 2',
+        defaultVariant: 1,
+        variants: [
+          {
+            name: 'Step 1 (5m × 3)',
+            summary: '5:00 Run · 3:00 Walk · 5:00 Run · 3:00 Walk · 5:00 Run',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 300], ['walk', 'Walk', 180],
+              ['run', 'Run', 300], ['walk', 'Walk', 180],
+              ['run', 'Run', 300],
+              ['cooldown', 'Cooldown Walk', 240]
+            ])
+          },
+          {
+            name: 'Step 2 (8m × 2)',
+            summary: '8:00 Run · 5:00 Walk · 8:00 Run + 4:00 Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 480], ['walk', 'Walk', 300],
+              ['run', 'Run', 480],
+              ['cooldown', 'Cooldown Walk', 240]
+            ])
+          },
+          {
+            name: 'Step 3 (20m)',
+            summary: '20:00 Continuous Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 1200],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 6,
+        shortLabel: '10m × 2',
+        defaultVariant: 1,
+        variants: [
+          {
+            name: 'Step 1 (5/8/5m)',
+            summary: '5:00 Run · 3:00 Walk · 8:00 Run · 3:00 Walk · 5:00 Run',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 300], ['walk', 'Walk', 180],
+              ['run', 'Run', 480], ['walk', 'Walk', 180],
+              ['run', 'Run', 300],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          },
+          {
+            name: 'Step 2 (10m × 2)',
+            summary: '10:00 Run · 3:00 Walk · 10:00 Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 600], ['walk', 'Walk', 180],
+              ['run', 'Run', 600],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          },
+          {
+            name: 'Step 3 (25m)',
+            summary: '25:00 Continuous Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 1500],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 7,
+        shortLabel: '25m Run',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '25:00 Continuous Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 1500],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 8,
+        shortLabel: '28m Run',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '28:00 Continuous Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 1680],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      },
+      {
+        week: 9,
+        shortLabel: '30m Run',
+        variants: [
+          {
+            name: 'Standard',
+            summary: '30:00 Continuous Run + Warmup & Cooldown',
+            segments: buildSegments([
+              ['warmup', 'Warmup Walk', 300],
+              ['run', 'Run', 1800],
+              ['cooldown', 'Cooldown Walk', 300]
+            ])
+          }
+        ]
+      }
+    ];
+
+    // =========================================================================
+    // 2. IN-MEMORY WAV AUDIO SYNTHESIZER (44.1 kHz, offline & screen-off ready)
+    // =========================================================================
+    const SAMPLE_RATE = 44100;
+
+    function encodeWavBlobUrl(floatSamples) {
+      const numSamples = floatSamples.length;
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+
+      function writeStr(offset, str) {
+        for (let i = 0; i < str.length; i++) {
+          view.setUint8(offset + i, str.charCodeAt(i));
+        }
+      }
+
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, SAMPLE_RATE, true);
+      view.setUint32(28, SAMPLE_RATE * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < numSamples; i++) {
+        const clamped = Math.max(-1, Math.min(1, floatSamples[i]));
+        view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+        offset += 2;
+      }
+
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      return URL.createObjectURL(blob);
+    }
+
+    function synthToneSequence(notes) {
+      const totalSec = notes.reduce((sum, n) => sum + n.dur + (n.gap || 0), 0);
+      const samples = new Float32Array(Math.ceil(totalSec * SAMPLE_RATE));
+      let cursor = 0;
+
+      for (const note of notes) {
+        const len = Math.floor(note.dur * SAMPLE_RATE);
+        const attack = Math.min(len * 0.12, 0.015 * SAMPLE_RATE);
+        const release = Math.min(len * 0.35, 0.06 * SAMPLE_RATE);
+
+        for (let i = 0; i < len; i++) {
+          const t = i / SAMPLE_RATE;
+          let env = 1;
+          if (i < attack) env = i / attack;
+          else if (i > len - release) env = (len - i) / release;
+
+          const base = Math.sin(2 * Math.PI * note.freq * t);
+          const harmonic2 = Math.sin(2 * Math.PI * note.freq * 2 * t) * 0.42;
+          const harmonic3 = Math.sin(2 * Math.PI * note.freq * 3 * t) * 0.18;
+          const mixed = (base + harmonic2 + harmonic3) / 1.60;
+          samples[cursor + i] = mixed * 0.96 * env;
+        }
+        cursor += len + Math.floor((note.gap || 0) * SAMPLE_RATE);
+      }
+      return encodeWavBlobUrl(samples);
+    }
+
+    function synthSilentKeepAlive() {
+      const samples = new Float32Array(SAMPLE_RATE);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = (i % 2 === 0 ? 1 : -1) * 0.00004;
+      }
+      return encodeWavBlobUrl(samples);
+    }
+
+    const AUDIO_URLS = {
+      keepAlive: synthSilentKeepAlive(),
+      // RUN: clear, bright ascending 3-note chime (F5 -> A5 -> C6)
+      run: synthToneSequence([
+        { freq: 698.46, dur: 0.15, gap: 0.045, bright: true },
+        { freq: 880.00, dur: 0.15, gap: 0.045, bright: true },
+        { freq: 1046.50, dur: 0.34, gap: 0.02, bright: true }
+      ]),
+      // WALK: exact descending mirror of the run sound (C6 -> A5 -> F5)
+      walk: synthToneSequence([
+        { freq: 1046.50, dur: 0.15, gap: 0.045, bright: true },
+        { freq: 880.00, dur: 0.15, gap: 0.045, bright: true },
+        { freq: 698.46, dur: 0.34, gap: 0.02, bright: true }
+      ]),
+      // FINISH: celebratory 4-note chord arpeggio (F5 -> A5 -> C6 -> F6)
+      finish: synthToneSequence([
+        { freq: 698.46, dur: 0.13, gap: 0.035, bright: true },
+        { freq: 880.00, dur: 0.13, gap: 0.035, bright: true },
+        { freq: 1046.50, dur: 0.13, gap: 0.035, bright: true },
+        { freq: 1396.91, dur: 0.48, gap: 0.02, bright: true }
+      ])
+    };
+
+    let audioCtx = null;
+    function fallbackBeep(kind) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!audioCtx) audioCtx = new AudioCtx();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const seq = kind === 'run'
+          ? [[698.46, 0, 0.15], [880.0, 0.195, 0.15], [1046.5, 0.39, 0.34]]
+          : kind === 'finish'
+            ? [[698.46, 0, 0.13], [880.0, 0.165, 0.13], [1046.5, 0.33, 0.13], [1396.91, 0.495, 0.48]]
+            : [[1046.5, 0, 0.15], [880.0, 0.195, 0.15], [698.46, 0.39, 0.34]];
+
+        seq.forEach(([freq, offset, dur]) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + offset);
+          gain.gain.setValueAtTime(0.001, now + offset);
+          gain.gain.linearRampToValueAtTime(state.volume * 0.75, now + offset + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + dur);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + offset);
+          osc.stop(now + offset + dur + 0.02);
+        });
+      } catch (e) {
+        // Ignore audio context restriction errors
+      }
+    }
+
+    // =========================================================================
+    // 3. STATE & PERSISTENCE
+    // =========================================================================
+    const STORAGE_KEY = 'c25k_treadmill_state_v1';
+
+    function loadPersisted() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function savePersisted() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          selectedWeek: state.selectedWeek,
+          selectedVariants: state.selectedVariants,
+          volume: state.volume,
+          keepAliveEnabled: state.keepAliveEnabled,
+          vibrateEnabled: state.vibrateEnabled,
+          wakeLockEnabled: state.wakeLockEnabled
+        }));
+      } catch (e) {
+        // Ignore storage errors
+      }
+    }
+
+    const saved = loadPersisted();
+    const initialWeek = Number.isInteger(saved.selectedWeek) && saved.selectedWeek >= 1 && saved.selectedWeek <= 9
+      ? saved.selectedWeek
+      : 1;
+    const state = {
+      selectedWeek: initialWeek,
+      selectedVariants: saved.selectedVariants || { 5: 1, 6: 1 },
+      volume: typeof saved.volume === 'number' ? saved.volume : 0.9,
+      keepAliveEnabled: typeof saved.keepAliveEnabled === 'boolean' ? saved.keepAliveEnabled : true,
+      vibrateEnabled: typeof saved.vibrateEnabled === 'boolean' ? saved.vibrateEnabled : true,
+      wakeLockEnabled: typeof saved.wakeLockEnabled === 'boolean' ? saved.wakeLockEnabled : false,
+
+      isRunning: false,
+      isFinished: false,
+      elapsedSec: 0,
+      anchorEpochMs: 0,
+      currentIntervalIndex: 0,
+      tickTimerId: null,
+      wakeLockSentinel: null
+    };
+
+    // =========================================================================
+    // 4. DOM REFERENCES
+    // =========================================================================
+    const el = {
+      keepAliveAudio: document.getElementById('keepAliveAudio'),
+      cueAudio: document.getElementById('cueAudio'),
+      toastContainer: document.getElementById('toastContainer'),
+      bgStatusBadge: document.getElementById('bgStatusBadge'),
+      bgStatusDot: document.getElementById('bgStatusDot'),
+      bgStatusText: document.getElementById('bgStatusText'),
+      weekSelect: document.getElementById('weekSelect'),
+      variantBar: document.getElementById('variantBar'),
+      variantNoteTitle: document.getElementById('variantNoteTitle'),
+      variantButtons: document.getElementById('variantButtons'),
+      ambientGlow: document.getElementById('ambientGlow'),
+      activeWorkoutTitle: document.getElementById('activeWorkoutTitle'),
+      intervalCounter: document.getElementById('intervalCounter'),
+      totalElapsedDisplay: document.getElementById('totalElapsedDisplay'),
+      totalDurationDisplay: document.getElementById('totalDurationDisplay'),
+      progressRing: document.getElementById('progressRing'),
+      phaseBadge: document.getElementById('phaseBadge'),
+      intervalTimerDisplay: document.getElementById('intervalTimerDisplay'),
+      nextPhaseDisplay: document.getElementById('nextPhaseDisplay'),
+      overallPercentDisplay: document.getElementById('overallPercentDisplay'),
+      overallProgressBar: document.getElementById('overallProgressBar'),
+      prevBtn: document.getElementById('prevBtn'),
+      startPauseBtn: document.getElementById('startPauseBtn'),
+      startPauseIcon: document.getElementById('startPauseIcon'),
+      startPauseLabel: document.getElementById('startPauseLabel'),
+      nextBtn: document.getElementById('nextBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      testRunBtn: document.getElementById('testRunBtn'),
+      testWalkBtn: document.getElementById('testWalkBtn'),
+      volumeSlider: document.getElementById('volumeSlider'),
+      volumeLabel: document.getElementById('volumeLabel'),
+      keepAliveToggle: document.getElementById('keepAliveToggle'),
+      vibrateToggle: document.getElementById('vibrateToggle'),
+      wakeLockToggle: document.getElementById('wakeLockToggle'),
+      scheduleHeading: document.getElementById('scheduleHeading'),
+      scheduleSubtitle: document.getElementById('scheduleSubtitle'),
+      timelineBar: document.getElementById('timelineBar'),
+      timelinePlayhead: document.getElementById('timelinePlayhead'),
+      statTotalTime: document.getElementById('statTotalTime'),
+      statRunTime: document.getElementById('statRunTime'),
+      statWalkTime: document.getElementById('statWalkTime'),
+      intervalList: document.getElementById('intervalList')
+    };
+
+    const RING_CIRCUMFERENCE = 2 * Math.PI * 114;
+
+    // =========================================================================
+    // 5. HELPERS
+    // =========================================================================
+    function formatMMSS(sec) {
+      const s = Math.max(0, Math.ceil(sec));
+      const mins = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+    }
+
+    function formatExactMMSS(sec) {
+      const s = Math.max(0, Math.floor(sec));
+      const mins = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+    }
+
+    function getCurrentWeekObj() {
+      return C25K_WEEKS.find(w => w.week === state.selectedWeek) || C25K_WEEKS[0];
+    }
+
+    function getCurrentVariant() {
+      const weekObj = getCurrentWeekObj();
+      const vIdx = weekObj.variants.length > 1
+        ? (state.selectedVariants[weekObj.week] ?? weekObj.defaultVariant ?? 0)
+        : 0;
+      return weekObj.variants[vIdx] || weekObj.variants[0];
+    }
+
+    function getSegments() {
+      return getCurrentVariant().segments;
+    }
+
+    function getTotalDuration() {
+      const segs = getSegments();
+      return segs.length ? segs[segs.length - 1].end : 0;
+    }
+
+    function findSegmentIndexAt(elapsed) {
+      const segs = getSegments();
+      for (let i = 0; i < segs.length; i++) {
+        if (elapsed < segs[i].end) return i;
+      }
+      return segs.length - 1;
+    }
+
+    function showToast(message, tone = 'info') {
+      const div = document.createElement('div');
+      const toneClasses = tone === 'run'
+        ? 'bg-orange-500/95 text-white border-orange-400'
+        : tone === 'walk'
+          ? 'bg-sky-500/95 text-white border-sky-400'
+          : tone === 'success'
+            ? 'bg-emerald-500/95 text-white border-emerald-400'
+            : 'bg-neutral-950/95 text-neutral-100 border-neutral-800';
+      div.className = `pointer-events-auto px-3.5 py-2.5 rounded-xl border text-xs font-semibold shadow-xl backdrop-blur-md transition-all duration-300 ${toneClasses}`;
+      div.textContent = message;
+      el.toastContainer.appendChild(div);
+      setTimeout(() => {
+        div.style.opacity = '0';
+        div.style.transform = 'translateY(-6px)';
+        setTimeout(() => div.remove(), 300);
+      }, 2600);
+    }
+
+    // =========================================================================
+    // 6. AUDIO, MEDIA SESSION & WAKE LOCK ENGINE
+    // =========================================================================
+    function playCue(kind) {
+      const url = AUDIO_URLS[kind] || AUDIO_URLS.walk;
+      el.cueAudio.volume = state.volume;
+      el.cueAudio.src = url;
+      el.cueAudio.currentTime = 0;
+      const playPromise = el.cueAudio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => fallbackBeep(kind));
+      }
+
+      if (state.vibrateEnabled && typeof navigator.vibrate === 'function') {
+        try {
+          if (kind === 'run') navigator.vibrate([180, 70, 180]);
+          else if (kind === 'finish') navigator.vibrate([150, 60, 150, 60, 350]);
+          else navigator.vibrate([320]);
+        } catch (e) {}
+      }
+    }
+
+    function startKeepAlive() {
+      if (!state.keepAliveEnabled) {
+        updateBgBadge('paused');
+        return;
+      }
+      el.keepAliveAudio.src = AUDIO_URLS.keepAlive;
+      el.keepAliveAudio.volume = 0.01;
+      const p = el.keepAliveAudio.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          updateBgBadge('active');
+          updateMediaSession();
+        }).catch(() => {
+          updateBgBadge('ready');
+        });
+      }
+    }
+
+    function stopKeepAlive() {
+      try {
+        el.keepAliveAudio.pause();
+      } catch (e) {}
+      updateBgBadge('ready');
+      if ('mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.playbackState = 'paused';
+        } catch (e) {}
+      }
+    }
+
+    function updateBgBadge(mode) {
+      if (mode === 'active') {
+        el.bgStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        el.bgStatusText.textContent = 'Screen-Off Active';
+        el.bgStatusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+      } else {
+        el.bgStatusDot.className = 'w-2 h-2 rounded-full bg-neutral-500';
+        el.bgStatusText.textContent = state.keepAliveEnabled ? 'Screen-Off Ready' : 'Keep-Alive Off';
+        el.bgStatusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-black text-neutral-300 border border-neutral-800';
+      }
+    }
+
+    function updateMediaSession() {
+      if (!('mediaSession' in navigator)) return;
+      const segs = getSegments();
+      const seg = segs[state.currentIntervalIndex] || segs[0];
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: state.isFinished ? 'Workout Complete!' : `${seg.label.toUpperCase()} (${formatExactMMSS(seg.duration)})`,
+          artist: `C25K Week ${state.selectedWeek} · Interval ${state.currentIntervalIndex + 1}/${segs.length}`,
+          album: 'C25K Treadmill Timer'
+        });
+        navigator.mediaSession.playbackState = state.isRunning ? 'playing' : 'paused';
+      } catch (e) {}
+    }
+
+    function bindMediaSessionHandlers() {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        navigator.mediaSession.setActionHandler('play', () => {
+          if (!state.isRunning) startTimer();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          if (state.isRunning) pauseTimer();
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          jumpToInterval(state.currentIntervalIndex + 1);
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          jumpToInterval(state.currentIntervalIndex - 1);
+        });
+      } catch (e) {}
+    }
+
+    async function syncWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      if (state.wakeLockEnabled && state.isRunning) {
+        try {
+          if (!state.wakeLockSentinel) {
+            state.wakeLockSentinel = await navigator.wakeLock.request('screen');
+            state.wakeLockSentinel.addEventListener('release', () => {
+              state.wakeLockSentinel = null;
+            });
+          }
+        } catch (e) {}
+      } else if (state.wakeLockSentinel) {
+        try {
+          await state.wakeLockSentinel.release();
+        } catch (e) {}
+        state.wakeLockSentinel = null;
+      }
+    }
+
+    // =========================================================================
+    // 7. TIMER ENGINE (Wall-Clock Drift-Proof)
+    // =========================================================================
+    function startTimer() {
+      if (state.isFinished) {
+        state.elapsedSec = 0;
+        state.currentIntervalIndex = 0;
+        state.isFinished = false;
+      }
+
+      const wasAtStart = state.elapsedSec === 0;
+      state.isRunning = true;
+      state.anchorEpochMs = Date.now() - state.elapsedSec * 1000;
+
+      startKeepAlive();
+      syncWakeLock();
+
+      if (wasAtStart) {
+        const firstSeg = getSegments()[0];
+        playCue(firstSeg.type === 'run' ? 'run' : 'walk');
+      }
+
+      if (state.tickTimerId) clearInterval(state.tickTimerId);
+      state.tickTimerId = setInterval(tick, 200);
+      updateMediaSession();
+      renderTimerUI();
+    }
+
+    function pauseTimer() {
+      if (!state.isRunning) return;
+      state.elapsedSec = Math.min(getTotalDuration(), (Date.now() - state.anchorEpochMs) / 1000);
+      state.isRunning = false;
+      if (state.tickTimerId) {
+        clearInterval(state.tickTimerId);
+        state.tickTimerId = null;
+      }
+      stopKeepAlive();
+      syncWakeLock();
+      updateMediaSession();
+      renderTimerUI();
+    }
+
+    function resetTimer() {
+      if (state.tickTimerId) {
+        clearInterval(state.tickTimerId);
+        state.tickTimerId = null;
+      }
+      state.isRunning = false;
+      state.isFinished = false;
+      state.elapsedSec = 0;
+      state.currentIntervalIndex = 0;
+      stopKeepAlive();
+      syncWakeLock();
+      updateMediaSession();
+      renderAll();
+    }
+
+    function jumpToInterval(targetIndex) {
+      const segs = getSegments();
+      const clamped = Math.max(0, Math.min(segs.length - 1, targetIndex));
+      state.currentIntervalIndex = clamped;
+      state.elapsedSec = segs[clamped].start;
+      state.isFinished = false;
+      if (state.isRunning) {
+        state.anchorEpochMs = Date.now() - state.elapsedSec * 1000;
+        const seg = segs[clamped];
+        playCue(seg.type === 'run' ? 'run' : 'walk');
+      }
+      updateMediaSession();
+      renderTimerUI();
+      scrollActiveIntervalIntoView();
+    }
+
+    function tick() {
+      if (!state.isRunning) return;
+      const total = getTotalDuration();
+      const newElapsed = (Date.now() - state.anchorEpochMs) / 1000;
+
+      if (newElapsed >= total) {
+        state.elapsedSec = total;
+        state.isRunning = false;
+        state.isFinished = true;
+        if (state.tickTimerId) {
+          clearInterval(state.tickTimerId);
+          state.tickTimerId = null;
+        }
+        playCue('finish');
+        stopKeepAlive();
+        syncWakeLock();
+        updateMediaSession();
+        showToast(`Week ${state.selectedWeek} complete! Great job.`, 'success');
+        renderAll();
+        return;
+      }
+
+      state.elapsedSec = newElapsed;
+      const newIdx = findSegmentIndexAt(newElapsed);
+      if (newIdx !== state.currentIntervalIndex) {
+        state.currentIntervalIndex = newIdx;
+        const seg = getSegments()[newIdx];
+        const cueKind = seg.type === 'run' ? 'run' : 'walk';
+        playCue(cueKind);
+        updateMediaSession();
+        showToast(
+          cueKind === 'run'
+            ? `RUN — ${formatExactMMSS(seg.duration)}`
+            : `${seg.label.toUpperCase()} — ${formatExactMMSS(seg.duration)}`,
+          cueKind
+        );
+        scrollActiveIntervalIntoView();
+      }
+      renderTimerUI();
+    }
+
+    // =========================================================================
+    // 8. RENDERING
+    // =========================================================================
+    function renderWeekSelector() {
+      if (el.weekSelect.options.length === 0) {
+        C25K_WEEKS.forEach(w => {
+          const defaultV = w.variants[w.defaultVariant ?? 0] || w.variants[0];
+          const totalSec = defaultV.segments[defaultV.segments.length - 1].end;
+          const opt = document.createElement('option');
+          opt.value = String(w.week);
+          opt.className = 'bg-black text-white';
+          opt.textContent = `Week ${w.week} — ${w.shortLabel} (${formatExactMMSS(totalSec)})`;
+          el.weekSelect.appendChild(opt);
+        });
+      }
+      el.weekSelect.value = String(state.selectedWeek);
+
+      const weekObj = getCurrentWeekObj();
+      if (weekObj.variants.length > 1) {
+        el.variantBar.classList.remove('hidden');
+        el.variantNoteTitle.textContent = `Week ${weekObj.week}`;
+        el.variantButtons.innerHTML = '';
+        const activeV = state.selectedVariants[weekObj.week] ?? weekObj.defaultVariant ?? 0;
+        weekObj.variants.forEach((v, idx) => {
+          const vBtn = document.createElement('button');
+          vBtn.type = 'button';
+          vBtn.className = idx === activeV
+            ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500 text-white shadow-sm transition-colors'
+            : 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-neutral-950 hover:bg-neutral-900 text-neutral-300 border border-neutral-800 transition-colors';
+          vBtn.textContent = v.name;
+          vBtn.addEventListener('click', () => {
+            if (activeV === idx) return;
+            state.selectedVariants[weekObj.week] = idx;
+            savePersisted();
+            resetTimer();
+          });
+          el.variantButtons.appendChild(vBtn);
+        });
+      } else {
+        el.variantBar.classList.add('hidden');
+      }
+    }
+
+    function renderScheduleStructure() {
+      const segs = getSegments();
+      const total = getTotalDuration();
+      const variant = getCurrentVariant();
+
+      let runTotal = 0;
+      let walkTotal = 0;
+      segs.forEach(s => {
+        if (s.type === 'run') runTotal += s.duration;
+        else walkTotal += s.duration;
+      });
+
+      const weekObj = getCurrentWeekObj();
+      const titleSuffix = weekObj.variants.length > 1 ? ` · ${variant.name}` : '';
+      el.activeWorkoutTitle.textContent = `Week ${state.selectedWeek}${titleSuffix}`;
+      el.scheduleHeading.textContent = `Week ${state.selectedWeek} Breakdown${titleSuffix}`;
+      el.scheduleSubtitle.textContent = `${variant.summary} · ${formatExactMMSS(total)} total`;
+      el.totalDurationDisplay.textContent = formatExactMMSS(total);
+      el.statTotalTime.textContent = formatExactMMSS(total);
+      el.statRunTime.textContent = formatExactMMSS(runTotal);
+      el.statWalkTime.textContent = formatExactMMSS(walkTotal);
+
+      el.timelineBar.innerHTML = '';
+      segs.forEach(s => {
+        const pct = total > 0 ? (s.duration / total) * 100 : 0;
+        const barSeg = document.createElement('div');
+        barSeg.style.width = `${pct}%`;
+        barSeg.title = `${s.label} (${formatExactMMSS(s.start)}–${formatExactMMSS(s.end)})`;
+        if (s.type === 'run') {
+          barSeg.className = 'h-full bg-orange-500 rounded-[3px]';
+        } else if (s.type === 'warmup' || s.type === 'cooldown') {
+          barSeg.className = 'h-full bg-sky-500/55 rounded-[3px]';
+        } else {
+          barSeg.className = 'h-full bg-sky-400 rounded-[3px]';
+        }
+        el.timelineBar.appendChild(barSeg);
+      });
+
+      el.intervalList.innerHTML = '';
+      segs.forEach((s, idx) => {
+        const isRun = s.type === 'run';
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.dataset.segIdx = String(idx);
+        row.className = 'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl border text-left transition-all bg-black hover:bg-neutral-950 border-neutral-800';
+        row.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isRun ? 'bg-orange-500' : 'bg-sky-400'}"></span>
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-bold ${isRun ? 'text-orange-200' : 'text-sky-100'} truncate">${s.label}</div>
+              <div class="text-[11px] font-mono text-neutral-400 tabular-nums">${formatExactMMSS(s.start)} – ${formatExactMMSS(s.end)}</div>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded-lg text-xs font-mono font-bold tabular-nums shrink-0 ${isRun ? 'bg-orange-500/15 text-orange-300' : 'bg-sky-500/15 text-sky-300'}">${formatExactMMSS(s.duration)}</span>
+        `;
+        row.addEventListener('click', () => jumpToInterval(idx));
+        el.intervalList.appendChild(row);
+      });
+    }
+
+    function renderTimerUI() {
+      const segs = getSegments();
+      const total = getTotalDuration();
+      const seg = segs[state.currentIntervalIndex] || segs[0];
+      const nextSeg = segs[state.currentIntervalIndex + 1] || null;
+
+      const segElapsed = Math.max(0, state.elapsedSec - seg.start);
+      const segRemaining = state.isFinished ? 0 : Math.max(0, seg.end - state.elapsedSec);
+      const segFrac = seg.duration > 0 ? Math.min(1, segElapsed / seg.duration) : 1;
+
+      el.progressRing.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+      el.progressRing.style.strokeDashoffset = String(RING_CIRCUMFERENCE * (1 - (state.isFinished ? 1 : segFrac)));
+
+      if (state.isFinished) {
+        el.progressRing.style.stroke = '#10b981';
+        el.ambientGlow.className = 'pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-15 bg-emerald-500 transition-colors duration-500';
+        el.phaseBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 mb-2';
+        el.phaseBadge.textContent = 'WORKOUT COMPLETE';
+        el.intervalTimerDisplay.textContent = '00:00';
+        el.nextPhaseDisplay.innerHTML = '<span class="text-emerald-400 font-semibold">Tap Start to repeat this week</span>';
+      } else if (seg.type === 'run') {
+        el.progressRing.style.stroke = '#f97316';
+        el.ambientGlow.className = 'pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-15 bg-orange-500 transition-colors duration-500';
+        el.phaseBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest bg-orange-500/20 text-orange-300 border border-orange-400/40 mb-2';
+        el.phaseBadge.textContent = 'RUN';
+        el.intervalTimerDisplay.textContent = formatMMSS(segRemaining);
+      } else {
+        el.progressRing.style.stroke = '#38bdf8';
+        el.ambientGlow.className = 'pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-15 bg-sky-500 transition-colors duration-500';
+        el.phaseBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest bg-sky-500/15 text-sky-300 border border-sky-400/30 mb-2';
+        el.phaseBadge.textContent = seg.label.toUpperCase();
+        el.intervalTimerDisplay.textContent = formatMMSS(segRemaining);
+      }
+
+      if (!state.isFinished) {
+        if (nextSeg) {
+          const nextColor = nextSeg.type === 'run' ? 'text-orange-400' : 'text-sky-300';
+          el.nextPhaseDisplay.innerHTML = `Next: <span class="${nextColor} font-semibold">${nextSeg.label.toUpperCase()} · ${formatExactMMSS(nextSeg.duration)}</span>`;
+        } else {
+          el.nextPhaseDisplay.innerHTML = 'Next: <span class="text-emerald-400 font-semibold">Finish!</span>';
+        }
+      }
+
+      const overallPct = total > 0 ? Math.min(100, (state.elapsedSec / total) * 100) : 0;
+      el.intervalCounter.textContent = `Interval ${state.currentIntervalIndex + 1} of ${segs.length}`;
+      el.totalElapsedDisplay.textContent = formatExactMMSS(state.elapsedSec);
+      el.overallPercentDisplay.textContent = `${Math.round(overallPct)}%`;
+      el.overallProgressBar.style.width = `${overallPct}%`;
+      el.timelinePlayhead.style.left = `${overallPct}%`;
+
+      if (state.isRunning) {
+        el.startPauseLabel.textContent = 'Pause';
+        el.startPauseIcon.innerHTML = '<path d="M6 5h4v14H6zm8 0h4v14h-4z" />';
+        el.startPauseBtn.className = 'col-span-2 flex items-center justify-center gap-2.5 min-h-[56px] rounded-2xl bg-white hover:bg-neutral-200 active:scale-[0.98] text-black font-bold text-base sm:text-lg shadow-lg transition-all';
+      } else {
+        el.startPauseLabel.textContent = state.isFinished ? 'Repeat Workout' : (state.elapsedSec > 0 ? 'Resume' : 'Start Workout');
+        el.startPauseIcon.innerHTML = '<path d="M8 5v14l11-7z" />';
+        el.startPauseBtn.className = 'col-span-2 flex items-center justify-center gap-2.5 min-h-[56px] rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 active:scale-[0.98] text-white font-bold text-base sm:text-lg shadow-lg shadow-orange-500/20 transition-all';
+      }
+
+      const rows = el.intervalList.querySelectorAll('button[data-seg-idx]');
+      rows.forEach((row, idx) => {
+        const isCurrent = !state.isFinished && idx === state.currentIntervalIndex;
+        const isPast = state.isFinished || idx < state.currentIntervalIndex;
+        const isRun = segs[idx].type === 'run';
+        if (isCurrent) {
+          row.className = isRun
+            ? 'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl border text-left transition-all bg-orange-500/15 border-orange-500/70 ring-1 ring-orange-500/30'
+            : 'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl border text-left transition-all bg-sky-500/15 border-sky-400/70 ring-1 ring-sky-400/30';
+        } else if (isPast) {
+          row.className = 'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl border text-left transition-all bg-black border-neutral-900 opacity-45 hover:opacity-80';
+        } else {
+          row.className = 'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl border text-left transition-all bg-black hover:bg-neutral-950 border-neutral-800';
+        }
+      });
+    }
+
+    function scrollActiveIntervalIntoView() {
+      const container = el.intervalList;
+      const activeRow = container.querySelector(`button[data-seg-idx="${state.currentIntervalIndex}"]`);
+      if (!activeRow) return;
+      // Scroll ONLY inside the interval list container so the main page never jumps
+      const rowTop = activeRow.offsetTop - container.offsetTop;
+      const rowBottom = rowTop + activeRow.offsetHeight;
+      const viewTop = container.scrollTop;
+      const viewBottom = viewTop + container.clientHeight;
+      if (rowTop < viewTop) {
+        container.scrollTo({ top: Math.max(0, rowTop - 8), behavior: 'smooth' });
+      } else if (rowBottom > viewBottom) {
+        container.scrollTo({ top: rowBottom - container.clientHeight + 8, behavior: 'smooth' });
+      }
+    }
+
+    function renderAll() {
+      renderWeekSelector();
+      renderScheduleStructure();
+      renderTimerUI();
+      updateBgBadge(state.isRunning && state.keepAliveEnabled ? 'active' : 'ready');
+    }
+
+    // =========================================================================
+    // 9. EVENT LISTENERS & INITIALIZATION
+    // =========================================================================
+    el.startPauseBtn.addEventListener('click', () => {
+      if (state.isRunning) pauseTimer();
+      else startTimer();
+    });
+
+    el.resetBtn.addEventListener('click', () => {
+      resetTimer();
+      showToast('Timer reset to 00:00');
+    });
+
+    el.prevBtn.addEventListener('click', () => {
+      jumpToInterval(state.currentIntervalIndex - 1);
+    });
+
+    el.nextBtn.addEventListener('click', () => {
+      jumpToInterval(state.currentIntervalIndex + 1);
+    });
+
+    el.testRunBtn.addEventListener('click', () => {
+      playCue('run');
+      el.testRunBtn.classList.remove('sound-flash');
+      void el.testRunBtn.offsetWidth;
+      el.testRunBtn.classList.add('sound-flash');
+      showToast('Played RUN sound (ascending chime)', 'run');
+    });
+
+    el.testWalkBtn.addEventListener('click', () => {
+      playCue('walk');
+      el.testWalkBtn.classList.remove('sound-flash');
+      void el.testWalkBtn.offsetWidth;
+      el.testWalkBtn.classList.add('sound-flash');
+      showToast('Played WALK sound (descending chime)', 'walk');
+    });
+
+    el.volumeSlider.value = String(Math.round(state.volume * 100));
+    el.volumeLabel.textContent = `${Math.round(state.volume * 100)}%`;
+    el.volumeSlider.addEventListener('input', (e) => {
+      const val = Number(e.target.value);
+      state.volume = val / 100;
+      el.volumeLabel.textContent = `${val}%`;
+      savePersisted();
+    });
+
+    el.keepAliveToggle.checked = state.keepAliveEnabled;
+    el.keepAliveToggle.addEventListener('change', (e) => {
+      state.keepAliveEnabled = e.target.checked;
+      savePersisted();
+      if (state.isRunning) {
+        if (state.keepAliveEnabled) startKeepAlive();
+        else stopKeepAlive();
+      } else {
+        updateBgBadge('ready');
+      }
+    });
+
+    el.vibrateToggle.checked = state.vibrateEnabled;
+    el.vibrateToggle.addEventListener('change', (e) => {
+      state.vibrateEnabled = e.target.checked;
+      savePersisted();
+    });
+
+    el.wakeLockToggle.checked = state.wakeLockEnabled;
+    el.wakeLockToggle.addEventListener('change', (e) => {
+      state.wakeLockEnabled = e.target.checked;
+      savePersisted();
+      syncWakeLock();
+    });
+
+    el.weekSelect.addEventListener('change', (e) => {
+      const nextWeek = Number(e.target.value);
+      if (!Number.isInteger(nextWeek) || nextWeek < 1 || nextWeek > 9) return;
+      state.selectedWeek = nextWeek;
+      savePersisted();
+      resetTimer();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (state.isRunning) {
+          tick();
+          syncWakeLock();
+        }
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (state.isRunning) pauseTimer();
+        else startTimer();
+      } else if (e.code === 'ArrowRight') {
+        jumpToInterval(state.currentIntervalIndex + 1);
+      } else if (e.code === 'ArrowLeft') {
+        jumpToInterval(state.currentIntervalIndex - 1);
+      }
+    });
+
+    bindMediaSessionHandlers();
+    renderAll();
+  </script>
+</body>
+</html>
