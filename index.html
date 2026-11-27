@@ -112,7 +112,7 @@
             <div>
               <span id="activeWorkoutTitle" class="font-bold text-white">Week 1</span>
               <span class="mx-1.5 text-neutral-600">·</span>
-              <span id="intervalCounter">Interval 1 of 18</span>
+              <span id="intervalCounter">8 runs left</span>
             </div>
             <div class="font-mono font-semibold text-neutral-300 tabular-nums">
               <span id="totalElapsedDisplay">00:00</span>
@@ -803,6 +803,14 @@
       return segs.length - 1;
     }
 
+    function getRunsLeftLabel() {
+      const segs = getSegments();
+      const left = state.isFinished
+        ? 0
+        : segs.slice(state.currentIntervalIndex).filter(s => s.type === 'run').length;
+      return `${left} ${left === 1 ? 'run' : 'runs'} left`;
+    }
+
     function showToast(message, tone = 'info') {
       const div = document.createElement('div');
       const toneClasses = tone === 'run'
@@ -874,7 +882,7 @@
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: state.isFinished ? 'Workout Complete!' : `${seg.label.toUpperCase()} (${formatExactMMSS(seg.duration)})`,
-          artist: `C25K Week ${state.selectedWeek} · Interval ${state.currentIntervalIndex + 1}/${segs.length}`,
+          artist: `Week ${state.selectedWeek} · ${getRunsLeftLabel()}`,
           album: 'Couch to 5k Timer'
         });
         navigator.mediaSession.playbackState = state.isRunning ? 'playing' : 'paused';
@@ -1179,7 +1187,7 @@
       }
 
       const overallPct = total > 0 ? Math.min(100, (state.elapsedSec / total) * 100) : 0;
-      el.intervalCounter.textContent = `Interval ${state.currentIntervalIndex + 1} of ${segs.length}`;
+      el.intervalCounter.textContent = getRunsLeftLabel();
       el.totalElapsedDisplay.textContent = formatExactMMSS(state.elapsedSec);
       el.overallPercentDisplay.textContent = `${Math.round(overallPct)}%`;
       el.overallProgressBar.style.width = `${overallPct}%`;
